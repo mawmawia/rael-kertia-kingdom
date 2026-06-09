@@ -9,47 +9,57 @@ const supabase = createClient(
 export default function Home() {
   const [crystals, setCrystals] = useState(0);
   const [isSubscribed, setIsSubscribed] = useState(false);
-  const [userId] = useState(typeof window !== 'undefined' ? 
-    window.Telegram?.WebApp?.initDataUnsafe?.user?.id?.toString() || 'test-user' : 'test-user');
+  const [lastMined, setLastMined] = useState(null);
+  const userId = typeof window !== 'undefined' ? window.Telegram?.WebApp?.initDataUnsafe?.user?.id?.toString() || 'test-user' : 'test-user';
 
   useEffect(() => {
-    async function fetchData() {
-      let { data } = await supabase.from('crystals').select('crystals').eq('id', userId).single();
-      if (data) setCrystals(data.crystals);
+    async function loadData() {
+      const { data } = await supabase.from('crystals').select('*').eq('id', userId).single();
+      if (data) {
+        setCrystals(data.crystals);
+        setLastMined(new Date(data.last_mined_at));
+        // Check if subscribed based on completed_tasks
+        if (data.completed_tasks?.includes('channel_sub')) setIsSubscribed(true);
+      }
     }
-    fetchData();
+    loadData();
   }, [userId]);
 
   const handleMine = async () => {
-    // x2 multiplier if subscribed
     const boost = isSubscribed ? 2 : 1;
-    const addedAmount = 5 * boost;
-    const newCount = crystals + addedAmount;
-    
+    const newCount = crystals + (5 * boost);
     setCrystals(newCount);
     
-    const { error } = await supabase.from('crystals').upsert({ id: userId, crystals: newCount });
-    if (error) console.error("Error saving:", error);
+    await supabase.from('crystals').upsert({ 
+      id: userId, 
+      crystals: newCount, 
+      last_mined_at: new Date().toISOString() 
+    });
   };
 
-  const handleSubscribe = () => {
-    // Change this to your actual channel link
-    window.open('https://t.me/your_channel_username', '_blank');
-    setIsSubscribed(true); // Simplified logic: assumes user subscribed
+  const handleSubscribe = async () => {
+    window.open('https://t.me/RaelKertiaKingdom', '_blank');
+    setIsSubscribed(true);
+    // Update DB with task completion
+    await supabase.from('crystals').upsert({ 
+      id: userId, 
+      completed_tasks: ['channel_sub'] 
+    });
+    alert("Subscribed! Boost activated.");
   };
 
   return (
     <div style={{ textAlign: 'center', padding: '20px', color: '#fff', background: '#000', minHeight: '100vh' }}>
       <h1>Rael Kertia Kingdom</h1>
-      <div style={{ fontSize: '30px', margin: '20px' }}>💎 {crystals}</div>
+      <div style={{ fontSize: '40px', margin: '30px' }}>💎 {crystals}</div>
       
-      <button onClick={handleMine} style={{ padding: '20px 40px', fontSize: '18px', background: '#3390ec', borderRadius: '15px', color: 'white', border: 'none' }}>
-        Manual Mine (+{isSubscribed ? 10 : 5})
+      <button onClick={handleMine} style={{ padding: '20px 40px', fontSize: '20px', background: '#3390ec', borderRadius: '15px', color: 'white', border: 'none' }}>
+        Mine (+{isSubscribed ? 10 : 5})
       </button>
 
       <div style={{ marginTop: '20px' }}>
-        <button onClick={handleSubscribe} style={{ padding: '10px 20px', background: isSubscribed ? '#28a745' : '#ffc107', borderRadius: '10px' }}>
-          {isSubscribed ? 'Subscribed (x2 Boost Active!)' : 'Subscribe to Channel (+2x Boost)'}
+        <button onClick={handleSubscribe} style={{ padding: '15px', background: isSubscribed ? '#28a745' : '#ffc107', borderRadius: '10px' }}>
+          {isSubscribed ? '✅ Subscribed (x2 Boost)' : 'Subscribe to Channel (+2x Boost)'}
         </button>
       </div>
     </div>
