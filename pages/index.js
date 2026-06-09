@@ -1,50 +1,66 @@
-import { useEffect, useRef, useState } from 'react';
-import Head from 'next/head';
+import { useEffect, useState } from 'react';
+import { createClient } from '@supabase/supabase-js';
+
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+);
 
 export default function Home() {
-  const canvasRef = useRef(null);
   const [crystals, setCrystals] = useState(0);
+  const [leaderboard, setLeaderboard] = useState([]);
+  const [userId] = useState(typeof window !== 'undefined' ? 
+    window.Telegram?.WebApp?.initDataUnsafe?.user?.id?.toString() || 'test-user' : 'test-user');
+
+  // Calculate Rank
+  const getRank = (count) => {
+    if (count < 100) return 'Elite';
+    if (count < 500) return 'Master';
+    if (count < 1000) return 'Legend';
+    if (count < 2000) return 'Mythic';
+    const mythicLevel = Math.min(100, Math.floor((count - 2000) / 500) + 1);
+    return `Mythic ${mythicLevel}`;
+  };
 
   useEffect(() => {
-    const canvas = canvasRef.current;
-    const ctx = canvas.getContext('2d');
-    canvas.width = window.innerWidth;
-    canvas.height = window.innerHeight;
+    async function fetchData() {
+      // Load User Data
+      let { data: userData } = await supabase.from('crystals').select('crystals').eq('id', userId).single();
+      if (userData) setCrystals(userData.crystals);
 
-    const letters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
-    const fontSize = 16;
-    const columns = canvas.width / fontSize;
-    const drops = Array(Math.floor(columns)).fill(1);
+      // Load Leaderboard
+      let { data: lbData } = await supabase.from('crystals').select('id, crystals').order('crystals', { ascending: false }).limit(10);
+      if (lbData) setLeaderboard(lbData);
+    }
+    fetchData();
+  }, [userId]);
 
-    const draw = () => {
-      ctx.fillStyle = 'rgba(0, 0, 0, 0.05)';
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
-      ctx.fillStyle = '#0F0';
-      ctx.font = fontSize + 'px monospace';
-
-      for (let i = 0; i < drops.length; i++) {
-        const text = letters.charAt(Math.floor(Math.random() * letters.length));
-        ctx.fillText(text, i * fontSize, drops[i] * fontSize);
-        if (drops[i] * fontSize > canvas.height && Math.random() > 0.975) drops[i] = 0;
-        drops[i]++;
-      }
-    };
-    const interval = setInterval(draw, 33);
-    return () => clearInterval(interval);
-  }, []);
+  const handleMine = async () => {
+    const newCount = crystals + 5;
+    setCrystals(newCount);
+    await supabase.from('crystals').upsert({ id: userId, crystals: newCount });
+  };
 
   return (
-    <div style={{ position: 'relative', minHeight: '100vh', overflow: 'hidden' }}>
-      <canvas ref={canvasRef} style={{ position: 'absolute', top: 0, left: 0, zIndex: -1 }} />
-      <div style={{ padding: '20px', textAlign: 'center', color: 'white', zIndex: 1, position: 'relative' }}>
-        <h1>Rael Kertia Kingdom</h1>
-        <h2 style={{ fontSize: '3rem' }}>💎 {crystals}</h2>
-        <button 
-          onClick={() => setCrystals(c => c + 5)}
-          style={{ padding: '15px 30px', background: '#3390ec', border: 'none', borderRadius: '10px', color: 'white', cursor: 'pointer' }}
-        >
-          Manual Mine (+5)
-        </button>
+    <div style={{ textAlign: 'center', padding: '20px', fontFamily: 'sans-serif', color: '#fff' }}>
+      <h1>Rael Kertia Kingdom</h1>
+      <div style={{ fontSize: '24px', margin: '20px' }}>
+        💎 {crystals} <br/>
+        Rank: <strong>{getRank(crystals)}</strong>
+      </div>
+      
+      <button onClick={handleMine} style={{ padding: '20px 40px', fontSize: '18px', background: '#3390ec', border: 'none', borderRadius: '15px', color: 'white', cursor: 'pointer' }}>
+        Mine Crystals
+      </button>
+
+      <div style={{ marginTop: '40px' }}>
+        <h3>🏆 Leaderboard (Top 10)</h3>
+        {leaderboard.map((user, index) => (
+          <div key={user.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '5px 20%' }}>
+            <span>{index + 1}. Player {user.id.slice(-4)}</span>
+            <span>{user.crystals} 💎</span>
+          </div>
+        ))}
       </div>
     </div>
   );
